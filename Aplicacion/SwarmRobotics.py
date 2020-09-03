@@ -100,7 +100,7 @@ def on_closing():
     global client
     global topicosGenerales
     
-    client.publish(topicoGeneral, "Cerrar")        #Notificamos a los agentes fin de sesion
+    client.publish(topicoGeneral, "Cerrar")          #Notificamos a los agentes fin de sesion
     if(baninalizarSimulacion and threadsIniciadas):  #En caso existan threads en ejecucion las terminamos
         finalizarSimulacion()
     client.disconnect()                            #Terminamos la cocmunicacion y nos desconectamos del servidor 
@@ -122,8 +122,7 @@ def conexionMosquitto():
         if(msg.topic == topicoAsistencia):             #Un agente se esta repostando 
             nuevoAgente(msg.payload.decode('utf-8'))   #Enviamos el ID de dicho agente para la configuracion inicial
         else:      
-            #Publicacion del ID de un agente en la red creada (Verificamos que la red se cree correctamente)
-            print("reporte topico creado..")           
+            #Publicacion del ID de un agente en la red creada (Verificamos que la red se cree correctamente)  
             reporteDeTopicosCreados(msg)
 
     #Creamos una instancia de un cliente de mqtt con el nombre deseado, realizamos las subscripciones e iniciamos loop comunicacion
@@ -162,7 +161,10 @@ a sus respectivos topicos.
 def reporteDeTopicosCreados(msg):
     global topicosIguales, idsPorTopicoIguales                                 #Bandera para verificar creacion exitosa de la red
     global topicosGenerales                                                    #Todos los topicos disenados por el usuario
-    global agentesSubscritosEnTopico                                           #Los agentes que estan subscritos a cada topico  
+    global agentesSubscritosEnTopico                                           #Los agentes que estan subscritos a cada topico 
+
+    topicosIguales      = True                                                 #Condicion inicial para validar la correcta creacion de la red                                     
+    idsPorTopicoIguales = True
     
     #Datos de la  publicacion
     topico    = msg.topic                                                      
@@ -174,7 +176,7 @@ def reporteDeTopicosCreados(msg):
     
     #Verificamos si ya estan creados todos los topicos disenados por el usuario 
     for topico in topicosGenerales: 
-        if (not topico in topicosCreadosPorAgentes):
+        if ((not topico in topicosCreadosPorAgentes) or (len(topicosCreadosPorAgentes)) != len(topicosGenerales)):
             topicosIguales = False                                             #Topicos Creados OK
     
     #Si todos los topicos estan creados, validamos que todos los agentes se encuenten subscritos a los topicos indicados
@@ -188,7 +190,7 @@ def reporteDeTopicosCreados(msg):
     #La red se creo exitosamente cuando todos los topicos esten creados y todos los agentes esten subscritos a sus respectivos topicos
     redCreadaExitosamente = topicosIguales and idsPorTopicoIguales
     if(redCreadaExitosamente):
-        pupopmsg("Red Creada Exitosamente")
+        pupopmsg("Controlador Cargado Con Exito A Los Agentes! \n\n Red De Comunicación Creada Exitosamente!")
     
     
 #Obtenemos el nombre de todos los controladores almacenados en la carpeta de controladores
@@ -224,13 +226,18 @@ Funcion para cargar el controlador seleccionado al servidor WAMP y enviar comand
 def cargarControladorAlServidor(control):
     global dirr, dirServer 
     global client
+    global topicosGenerales
     
     #Cargamos nuevo controlador al servidor
     if(os.listdir(dirServer) != []):                                #Verificamos si la carpeta Bootloader del servidor esta vacia
         os.remove(dirServer+"/MainServidor.py")                     #Si ya existe un controlador cargado lo eliminamos 
     shutil.copy(dirr+'/'+control,dirServer)                         #Realizamos una copia del archivo del controlador seleccionado en el servidor  
     os.rename(dirServer+'/'+control, dirServer+"/MainServidor.py")  #Le cambiamos el nombre para que los microcontroladores puedan encontrar el archivo
-      
+    #Nos subscribimos a todos los topicos creados para verificar la creacion correcta de la red
+    for topico in topicosGenerales:
+        print('Subscrito topico:' + topico)
+        client.subscribe(topico)
+    
     #Enviamos comando a los agentes que descarguen el nuevo controlador del servidor
     client.publish(topicoGeneral, "ArchivoServidor") 
     pupopmsg("Controlador Cargado con exito al servidor")
@@ -329,6 +336,10 @@ def inicio():
     baninalizarSimulacion  = True               #Bandera para terminar las threadas
     threads = []                              #Inicializamos las varibles de registro 
     threadsIniciadas = []
+    
+    #Nos desubscribimos a los topicos luego de haber verificado que  la red se creo correctamente
+    for topico in topicosGenerales:
+        client.unsubscribe(topico)
     
     client.publish(topicoGeneral , "Iniciar") #Mandamos comando para que los agentes restauren los archivos
     #Ingresar aqui el nombre de las funciones a trabajar, por cada funcion se empelara una thread diferente                     
@@ -502,7 +513,7 @@ def disenarRedDeComunicacion():
         
 '''
 Ventana para crear un nuevo topico en la red de comunicacion, indicando el nombre del tipoco los agentes que estaran subscritos a esta 
-y los datos de los agentes que se enviaran por dicho topico, se valida que la informacion ingresada sea valida
+y los datos de los agentes que se enviaran por dicho topico, se valida que la informacion ingresada sea vali
 '''      
 def creacionDeNuevoTopico():     
     global idAgentesConectados         #Listado de ID's de los agentes conectados
