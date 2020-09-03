@@ -80,9 +80,11 @@ def Robotat():
     client.set_callback(msj_callback)
     client.connect()
     topicos_a_subscribir = topicos_subscrito.split(",")   #Obtenemos todos los topicos a los que nos tenemos que subscribirnos
-    for topico in topicos_a_subscribir:                   #Nos subscribimos a dichos topicos
-        client.subscribe(topico)                  
-        print("Agente conectado al topico " + topico) 
+    for topico in topicos_a_subscribir:                   
+        #Reportamos nuestro ID a en el topico creado para que la app  verifique que la red se creo correctamente
+        if topico != topico_general:
+            client.publish(topico, client_id)  
+        client.subscribe(topico)                  #Nos subscribimos a dichos topicos 
     return client                                 #Regresamos el objeto de la conexion MQTT - unicamente se utiliza en el controlador descargado
 
 #Callback al momento de obtenerun mensaje. No se utiliza por el momento
@@ -294,7 +296,8 @@ class MQTTClient:
         if (topic == b'AgentesSwarm'):                    #Comandos enviados por la aplicacion los procesamos internamente
             self.Comunicacion_Canal_General(msg.decode('utf-8')) 
         else:                                             #Resto de comunicacion (datos) se envian al controlador del usuario
-            self.payload = loads(msg.decode('utf-8'))     #Obtenemos la data enviada por el topico
+            if(self.Sesion):
+                self.payload = loads(msg.decode('utf-8'))     #Obtenemos la data enviada por el topico
             self.cb(topic, msg)
         if op & 6 == 2:
             pkt = bytearray(b"\x40\x02\0\0")
