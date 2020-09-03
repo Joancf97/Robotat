@@ -1,7 +1,7 @@
 import  os, machine, network, gc
 import btree
 
-#Parametros para la conexion de wifi y al servidor MQTT
+#Parametros para la conexion de wifi y al servidor MQTT,  estas variables son utilizadas en otros archivos
 url_server = ""   
 ip_server_mqtt = ""
 ssid = ""
@@ -44,7 +44,6 @@ def WIFI():
         db.close()                                  #!!IMPORTANTE -> Cerramos base de datos  
         f.close()                                   #!!IMPORTANTE -> Cerramos archivo  
     coneccionWIFI(ssid, password)                   #Nos conectamos a la red
-
 
 '''
 Realiza la coneccion a la red WIFI especificada, por medio de un objeto tipo station
