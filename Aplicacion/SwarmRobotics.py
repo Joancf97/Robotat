@@ -651,8 +651,6 @@ class tablaDeDatos(tk.Tk):
         Llenar_Tabla()
             
             
-   
-    
 #================================ SET UP ======================================
 buscarcontroladoresDisponibles() #Obtener los controladores disponibles en la carpeta de controladores
 conexionMosquitto()              #Conexión al servidor MQTT
