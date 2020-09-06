@@ -27,10 +27,10 @@ print("Archivo servidor ejecutandoce..")
 while True:
     Swarm.check_msg()
     Actualizar(Swarm.payload)
-    if (Swarm.Sesion):
+    if (Swarm.Sesion):    
         #try:
         #    if(Agente[Swarm.client_id]["X"] == 30):
         #        Swarm.publish("Topico2", json.dumps([Agente[Swarm.client_id]]))
-            print(Agente)
+        print(Agente)
         #except:
         #    print("asd")

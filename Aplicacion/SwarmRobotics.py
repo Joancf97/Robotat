@@ -16,6 +16,11 @@ import cv2                      #Procesamiento de video
 import paho.mqtt.client as mqtt #Comunicacion con los agentes
 import time
 import json                     #Envio de paquetes como objeto
+import numpy as np              #Analiss del rendimiento del sistema
+from timeit import default_timer as timer
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg  #Barra de navegaicon en las graficas
+from matplotlib.figure import  Figure 
+
 
 
 ########################################################### Variables ###########################################################
@@ -74,11 +79,17 @@ ssid     = 'CLARO1_1B478E'
 password = '387O5hxabM'
 
 #Control de thread implementadas en la app
-threads                = []       #Listado de las funciones que se trabajaran como threads -> Ingresar las funciones en inicio()
+threads                = []       #Listado de las funciones que se trabajaran como threads -> Ingresar las funciones en inicioThreads()
 threadsIniciadas       = []       #Listado de las threads ya iniciadas de las funciones definidas
-baninalizarSimulacion  = True     #Bandera para iniciar y terminar el proceso en cada una de las threads
+banInalizarSimulacion  = True     #Bandera para iniciar y terminar el proceso en cada una de las threads
 threadsIniciadas       = False    #Bandera para indicar si la comunicacion ya fue iniciada en algun momento en el uso de la aplicacion
 
+#Evaluar el rendimiento del sistema
+datosEnviadosEnPrueba     = {}      #Diccionario para almacenar la cantidad de datos enviados por cada thread en en el tiempo definido
+tiempoDePrueba            = 6       #Tiempo en  el cual se evaluara el rendimiento del sistema
+evaluandoRendimiento      = False   #Bandera para indicar cuando se esta evaluando el sistema 
+tiempoInicioThread        = 0       #Tiempo en el que se inica a evaluar el rendimiento en el envio de datos
+segundoActual             = 0                   
 
 ############################################################ Funciones auxiliares ###############################################
 #Funcion para mostrar un mensaje de alerta que recive como parametro en la pantalla 
@@ -101,7 +112,7 @@ def on_closing():
     global topicosGenerales
     
     client.publish(topicoGeneral, "Cerrar")          #Notificamos a los agentes fin de sesion
-    if(baninalizarSimulacion and threadsIniciadas):  #En caso existan threads en ejecucion las terminamos
+    if(banInalizarSimulacion and threadsIniciadas):  #En caso existan threads en ejecucion las terminamos
         finalizarSimulacion()
     client.disconnect()                            #Terminamos la cocmunicacion y nos desconectamos del servidor 
     client.loop_stop()                             
@@ -288,11 +299,17 @@ el nombre del topico al  cual tiene que  publicar la informacion y la informacio
 Los datos enviados se actualian por medio del analisis de vision de computadora
 '''
 def  threadComunicacionTopico(topico, Data_envio):
-    global baninalizarSimulacion 
+    global banInalizarSimulacion 
     global client
     global DataAgentes
+    global evaluandoRendimiento, tiempoInicioThread
+    global datosEnviadosEnPrueba
 
-    while baninalizarSimulacion:                           #Mientras la simulacion este activa, enviamos datos   
+    if(evaluandoRendimiento):                            #Si evaluamos el rendimiento del sistema inicializamos las 
+        cont = 0                                         #variables para realizar el analisis de datos
+        datosEnviadosEnPrueba[topico] = {}
+    
+    while banInalizarSimulacion:                         #Mientras la simulacion este activa, enviamos datos 
         payload = []                                     #Paquete completo  de datos a enviar
         for agente in Data_envio: 
             data = {"X":0, "Y":0, "Angulo":0, "ID":0}
@@ -301,39 +318,49 @@ def  threadComunicacionTopico(topico, Data_envio):
             data["Y"] = DataAgentes[agente].Y
             data["Angulo"] = DataAgentes[agente].Angulo
             payload.append(data)                        #Se adjunta la informacion de todos los agentes a enviar por el topico 
-        #Realizamos La publicacion de la informacion como un bjeto json en el topico
-        client.publish(topico, json.dumps(payload))   
-        time.sleep(1)
+        
+        if(evaluandoRendimiento):
+            cont += 1                                               #Incrementamos la cantidad de datos enviados en este segundo   
+            segundo = int(timer() - tiempoInicioThread)             #Segundo actual
+            if (segundo in np.arange(tiempoDePrueba)):              #Cada segundo guardamos los datos y reiniciamos el contador
+                if(len(datosEnviadosEnPrueba[topico]) <= segundo):
+                    datosEnviadosEnPrueba[topico][segundo] = cont   
+                    cont = 0
+            else:
+                evaluandoRendimiento = False                        #Cuando el  tiempo de prueba esta cumplido dejamos de ejecutar las threads
+        else:
+            client.publish(topico, json.dumps(payload)) #Realizamos La publicacion de la informacion como un bjeto json en el topico
+        time.sleep(0.087987)
     return    
  
 
 #Funciones adicionales a ejecutar de form organizada con la thread de comunicacion *Todavia no  estan organizadas*
 def function():    
-    while baninalizarSimulacion:
-        print("..1")
+    while banInalizarSimulacion:
+        print("..")
     return
         
 def function2():
-    while baninalizarSimulacion:
-        print("..2")
+    while banInalizarSimulacion:
+        print("..")
     return
         
 def function3():
-    while baninalizarSimulacion:
-        print("..3")
+    while banInalizarSimulacion:
+        print("..")
     return
 
 '''
 Cuando el usuario inicia la simulacion desde la aplicaicon, por medio de esta funcion se inicial las threads de trabajo, 
 las cuales se estaran ejecutando de forma paralela, pero oorganizada con las threads de comunicacion
 '''  
-def inicio():
-    global threads, threadsIniciadas, baninalizarSimulacion 
+def inicioThreads():
+    global threads, threadsIniciadas, banInalizarSimulacion 
     global topicoGeneral
     global threadsIniciadas
     
     threadsIniciadas     = True               #Se ha iniciado un proceso de comunicacion
-    baninalizarSimulacion  = True               #Bandera para terminar las threadas
+    banInalizarSimulacion  = True               #Bandera para terminar las threadas
     threads = []                              #Inicializamos las varibles de registro 
     threadsIniciadas = []
     
@@ -341,11 +368,14 @@ def inicio():
     for topico in topicosGenerales:
         client.unsubscribe(topico)
     
-    client.publish(topicoGeneral , "Iniciar") #Mandamos comando para que los agentes restauren los archivos
+    if(not evaluandoRendimiento):                  #Mandamos comando para que los agentes inicien la sesion, unicamente si -
+        client.publish(topicoGeneral , "Iniciar")  #no estamos evaluando el rendimiento del sistema
+        
     #Ingresar aqui el nombre de las funciones a trabajar, por cada funcion se empelara una thread diferente                     
-    threads = [function,function2,function3]                 
+    threads = [] #[function,function2,function3]                 
     for thread in threads:                                  
         t = threading.Thread(target=thread)   #Inicializamos una thread para cada funcion 
+        t.setDaemon(True)
         t.start()                             #Iniciamos la thread para que inicie a trabajar 
         threadsIniciadas.append(t)            #Agragamos dicha thread a la lista de threads inicializadas 
     Comunicacion()                            #Iniciamos threas para comunicacion con los topicos de forma individual
@@ -355,14 +385,17 @@ Cuando el usuario finaliza la  simulacion, se terminan todas las treads en ejecu
 la simulacion ya termino, Idealmente esta funcion tiene que ser ejecutada antes de cerrar para dejar de ejecutar las threads. 
 '''
 def finalizarSimulacion():
-    global baninalizarSimulacion
+    global banInalizarSimulacion
     global threadsIniciadas
+    global evaluandoRendimiento
     
-    baninalizarSimulacion = False                 #Bandera para terminar las threadas
-    client.publish(topicoGeneral , "Terminar")  #Mandamos comando para que los agentes restauren los archivos
+    banInalizarSimulacion = False               #Bandera para terminar las threadas
+    client.publish(topicoGeneral , "Terminar")
     for t in threadsIniciadas:    
-        t.join()                                #Terminamos las threads 
-    pupopmsg("Procesos terminados correctamente ")    
+        t.join()                           #Terminamos las threads 
+    pupopmsg("Procesos terminados correctamente ")  
+        
+    
 
 
 #Enviamos la configuracion de red definida por el usuario a de los agentes
@@ -393,6 +426,27 @@ def modificacionDeConexionWifi():
         else:
             pupopmsg("Datos ingresado Incorrectamente")
 
+'''
+Esta funcion permite evaluar el rendimiento del sistema en cuanto a la cantidad de paquetes de informacion enviados por cada thread
+(canal) de comunicacion
+'''
+def evaluarRendimientoRed():
+    global evaluandoRendimiento
+    global tiempoInicioThread
+    global banInalizarSimulacion
+    
+    
+    tiempoInicioThread = timer()    #Iniciamos el tiempo de evaluacion 
+    evaluandoRendimiento = True     #Activamos el  modo  de evaluacion de rendimiento
+    inicioThreads()
+    while evaluandoRendimiento:     #cuando el tiempo se cumpla, las threads cambiaran el estado de la bandera evaluandoRendimiento a false
+        pass
+    mostrarRendimientoEnvioDatos()  #Procedemos a cerrar las threads 
+    finalizarSimulacion()           #Mostramos la ventana de resultados al usuario
+    
+
+        
+        
 
 
 ############################################################### Ventana Principal ################################################### 
@@ -418,7 +472,7 @@ class swarmRobotics(tk.Tk):
         Controldores.add_command(label="Cargar Nuevo..", command=lambda: cargarNuevoControlador())           
         controladoresMenu(Controldores)                                                                                      #Creamos una opcion por cada controlador
         Robotarium.add_cascade(label="5. Cargar Controlador", menu=Controldores)                                             #Mostramos los controladores disponibles en  el menu
-        Robotarium.add_command(label = "6. Iniciar simulacion",  command= lambda: inicio())                                  #Iniciamos la simulacion,  inicia comunicacion y threads de procesamiento de datos                                 
+        Robotarium.add_command(label = "6. Iniciar simulacion",  command= lambda: inicioThreads())                                  #Iniciamos la simulacion,  inicia comunicacion y threads de procesamiento de datos                                 
         Robotarium.add_command(label="7. Tabla de datos",  command=lambda: tablaDeDatos())                                   #Mostramos la tadla de datos de los agentes
         Robotarium.add_command(label="8. Finalizar simulacion",  command=lambda: finalizarSimulacion())                      #Terminamos la simulacion, finaliza comunicacion y threads de procesamiento de datos 
         menubar.add_cascade(label="Robotat", menu=Robotarium)                                              
@@ -433,7 +487,8 @@ class swarmRobotics(tk.Tk):
         Configuracion.add_command(label = "Diseñar red comunicación",  command= lambda: disenarRedDeComunicacion())          #Disenamos una red mas compleja que la propuesta (Default)
         Configuracion.add_command(label="Restablecer Swarmdb", command= lambda: print('No disponible..'))              
         Configuracion.add_command(label="Configuracion Wifi agentes", command= lambda: modificacionDeConexionWifi())
-        Configuracion.add_command(label="Configuracion De Camara", command= lambda: print('No disponible..'))
+        Configuracion.add_command(label="Configuracion De Camara", command= lambda: print('No disponible..'))  
+        Configuracion.add_command(label="Evaluar Rendimiento de la red", command= lambda: evaluarRendimientoRed())
         menubar.add_cascade(label="Configuracion", menu=Configuracion)
         #Creamos el menu
         tk.Tk.config(self, menu = menubar)        
@@ -660,7 +715,49 @@ class tablaDeDatos(tk.Tk):
                 e = ttk.Label(self, width=11,font=SAMALL_FONT, anchor="center", text=DataAgentes[i].Angulo, background="white" )
                 e.grid(row=4, column=i+2, sticky=(tk.W + tk.S + tk.N + tk.E))   
         Llenar_Tabla()
-            
+'''      
+Ventana para mostrar el rendimiento de del sistema enfocado en el envio de datos por cada topico configurado por el usuario.
+'''
+def mostrarRendimientoEnvioDatos():
+    global datosEnviadosEnPrueba
+    global evaluandoRendimiento
+    
+    rendEnvio = tk.Toplevel()           #mostramos hasta arriva (z index)
+    rendEnvio.geometry("1350x600")      #Geometria de la  pantalla
+    rendEnvio.title("Rendimiento del envio de datos")
+    tk.Scrollbar(rendEnvio)
+    
+    ttk.Label(rendEnvio, width=20,font=LARGE_FONT,  text="Thread del topico", background="white", anchor="center").grid(column=0, row=0) 
+    ttk.Label(rendEnvio, width=20,font=LARGE_FONT,  text="Historial", background="white", anchor="center").grid(column=1, row=0)  
+    ttk.Label(rendEnvio, width=15,font=LARGE_FONT,  text="Envios/s Max", background="white", anchor="center").grid(column=2, row=0) 
+    ttk.Label(rendEnvio, width=15,font=LARGE_FONT,  text="Envios/s Prom", background="white", anchor="center").grid(column=3, row=0)
+    ttk.Label(rendEnvio, width=15,font=LARGE_FONT,  text="Envios/s Min", background="white", anchor="center").grid(column=4, row=0)  
+    ttk.Label(rendEnvio, width=50,font=LARGE_FONT,  text="Gráfica", background="white", anchor="center").grid(column=5, row=0) 
+
+    #Recorremos los datos obtenidos de la etapa de evaluacion del rendimiento para mostrarle los datos al usuario
+    i = 0
+    for topico in datosEnviadosEnPrueba:
+        i += 1
+        Datos = []
+        ttk.Label(rendEnvio, width=20,font=LARGE_FONT, text=topico, anchor="center").grid(column=0, row=i, pady=5) 
+        for dato in datosEnviadosEnPrueba[topico]:
+                Datos.append(datosEnviadosEnPrueba[topico][dato])
+        ttk.Label(rendEnvio, width=20,font=LARGE_FONT, text=Datos, anchor="center").grid(column=1, row=i, pady=5)
+        ttk.Label(rendEnvio, width=15,font=LARGE_FONT, text=str(np.amax(Datos)), anchor="center").grid(column=2, row=i) 
+        ttk.Label(rendEnvio, width=15,font=LARGE_FONT, text=str(int(np.average(Datos))), anchor="center").grid(column=3, row=i) 
+        ttk.Label(rendEnvio, width=15,font=LARGE_FONT, text=str(np.amin(Datos)), anchor="center").grid(column=4, row=i)
+        #Graficas para poder observar el comportamiento 
+        fig = Figure(figsize=(5,1), dpi=100)
+        t = np.arange(0, len(Datos), 1)
+        fig.add_subplot(111).plot(t, Datos)
+        canvas = FigureCanvasTkAgg(fig, master =rendEnvio)
+        canvas.draw()
+        canvas.get_tk_widget().grid(column=5, row=i, pady=1) 
+
+        
+    
+    
+
             
 #================================ SET UP ======================================
 buscarcontroladoresDisponibles() #Obtener los controladores disponibles en la carpeta de controladores
